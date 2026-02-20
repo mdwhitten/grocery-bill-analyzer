@@ -1,0 +1,229 @@
+"""
+Categorization Service
+
+Two-stage approach:
+  1. Check the learned item_mappings table first (fast, zero API cost)
+  2. For unknown items, call Claude API in a single batched request
+     and persist the results back to the DB for next time.
+
+Categories are fully dynamic — fetched from the `categories` table so
+user-created custom categories work exactly like built-ins.
+"""
+import json
+import os
+import re
+from typing import Optional
+
+import anthropic
+import aiosqlite
+
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# Fallback list used only when DB is unavailable (e.g. during cold startup)
+_BUILTIN_CATEGORIES = [
+    "Produce", "Meat & Seafood", "Dairy & Eggs", "Snacks",
+    "Beverages", "Pantry", "Frozen", "Household", "Other",
+]
+
+
+async def get_categories(db: aiosqlite.Connection) -> list[str]:
+    """Return all category names (built-in + custom) ordered by sort_order."""
+    async with db.execute(
+        "SELECT name FROM categories ORDER BY sort_order, name"
+    ) as cur:
+        rows = await cur.fetchall()
+    return [r["name"] for r in rows] if rows else _BUILTIN_CATEGORIES
+
+
+async def _build_system_prompt(db: aiosqlite.Connection) -> str:
+    cats = await get_categories(db)
+    return f"""You are a grocery receipt item categorizer.
+Your job is to assign each grocery item to exactly one of these categories:
+{', '.join(cats)}
+
+Rules:
+- Use only the listed category names, spelled exactly as shown.
+- Base your decision on the item name and store context.
+- When unsure, prefer a specific category over "Other".
+- Return ONLY a JSON array. No prose, no markdown fences.
+
+Input format: JSON array of objects with "id" and "name" fields, plus optional "store".
+Output format: JSON array of objects with "id", "category", and "confidence" (0.0–1.0).
+"""
+
+
+def normalize_key(name: str) -> str:
+    """Produce a stable lookup key from a raw item name."""
+    # Lowercase, remove quantities/weights, strip special chars
+    key = name.lower()
+    key = re.sub(r'\d+(\.\d+)?\s*(oz|lb|kg|g|ml|l|ct|pk|pack|count|fl oz)\b', '', key)
+    key = re.sub(r'\b\d+\b', '', key)           # remove standalone numbers
+    key = re.sub(r'[^a-z\s]', ' ', key)          # keep only letters + spaces
+    key = re.sub(r'\s+', ' ', key).strip()
+    return key
+
+
+def find_best_match(key: str, mappings: dict[str, str]) -> Optional[str]:
+    """
+    Try to match a normalized key against learned mappings.
+    First exact, then substring match.
+    """
+    if key in mappings:
+        return mappings[key]
+    # Try partial matches: if a learned keyword appears in the item key
+    for learned_key, category in mappings.items():
+        if learned_key in key or key in learned_key:
+            return category
+    return None
+
+
+async def load_mappings(db: aiosqlite.Connection) -> dict[str, str]:
+    """Load all learned item→category mappings from DB."""
+    async with db.execute(
+        "SELECT normalized_key, category FROM item_mappings"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    return {row["normalized_key"]: row["category"] for row in rows}
+
+
+async def save_mapping(
+    db: aiosqlite.Connection,
+    raw_name: str,
+    category: str,
+    source: str = "ai",
+):
+    """Upsert a learned mapping back to the DB."""
+    key = normalize_key(raw_name)
+    display = raw_name.strip().title()
+    await db.execute(
+        """
+        INSERT INTO item_mappings (normalized_key, display_name, category, source, times_seen)
+        VALUES (?, ?, ?, ?, 1)
+        ON CONFLICT(normalized_key) DO UPDATE SET
+            category   = excluded.category,
+            source     = excluded.source,
+            times_seen = times_seen + 1,
+            last_seen  = datetime('now')
+        """,
+        (key, display, category, source),
+    )
+
+
+async def categorize_items(
+    items: list[dict],   # [{id, raw_name, clean_name}, ...]
+    store_name: str,
+    db: aiosqlite.Connection,
+) -> list[dict]:
+    """
+    Categorize a list of items.
+    Returns list of dicts with added 'category', 'category_source', 'ai_confidence'.
+    """
+    mappings = await load_mappings(db)
+    results = []
+    unknown = []
+
+    # Stage 1 — learned mappings (always key on raw_name so the lookup is
+    # stable regardless of how clean_name / display_name changes over time)
+    for item in items:
+        key = normalize_key(item["raw_name"])
+        matched_cat = find_best_match(key, mappings)
+        if matched_cat:
+            results.append({
+                **item,
+                "category": matched_cat,
+                "category_source": "learned",
+                "ai_confidence": 1.0,
+            })
+        else:
+            unknown.append(item)
+
+    # Stage 2 — Claude API for unknown items
+    if unknown:
+        ai_results = await _call_claude(unknown, store_name, db)
+        for item, ai in zip(unknown, ai_results):
+            category = ai.get("category", "Other")
+            confidence = float(ai.get("confidence", 0.7))
+
+            # Persist so we don't ask Claude again
+            await save_mapping(db, item.get("clean_name") or item["raw_name"], category, source="ai")
+
+            results.append({
+                **item,
+                "category": category,
+                "category_source": "ai",
+                "ai_confidence": confidence,
+            })
+
+    await db.commit()
+
+    # Restore original order
+    order = {item["id"]: i for i, item in enumerate(items)}
+    results.sort(key=lambda r: order.get(r["id"], 0))
+    return results
+
+
+async def _call_claude(items: list[dict], store_name: str, db: aiosqlite.Connection) -> list[dict]:
+    """
+    Send a batch of unknown items to Claude for categorization.
+    Returns list of {id, category, confidence} in the same order.
+    The system prompt is built dynamically so custom categories are included.
+    """
+    fallback = [{"id": i["id"], "category": "Other", "confidence": 0.0} for i in items]
+
+    if not ANTHROPIC_API_KEY:
+        print("[categorize] ANTHROPIC_API_KEY not set — skipping AI categorization")
+        return fallback
+
+    system_prompt = await _build_system_prompt(db)
+    payload = [
+        {"id": item["id"], "name": item.get("clean_name") or item["raw_name"], "store": store_name}
+        for item in items
+    ]
+
+    client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    try:
+        message = await client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=system_prompt,
+            messages=[{"role": "user", "content": json.dumps(payload)}],
+        )
+        raw = message.content[0].text.strip()
+        raw = re.sub(r'^```[a-z]*\n?', '', raw)
+        raw = re.sub(r'\n?```$', '', raw)
+        return json.loads(raw)
+    except Exception as e:
+        print(f"[categorize] Claude API error: {e}")
+        return fallback
+
+
+async def apply_manual_correction(
+    db: aiosqlite.Connection,
+    item_id: int,
+    new_category: str,
+):
+    """
+    User corrected a category. Validate it exists in DB, then update and strengthen mapping.
+    """
+    # Validate category exists (covers both built-in and custom)
+    async with db.execute(
+        "SELECT id FROM categories WHERE name = ?", (new_category,)
+    ) as cur:
+        if not await cur.fetchone():
+            raise ValueError(f"Unknown category: {new_category!r}")
+
+    async with db.execute(
+        "SELECT raw_name, clean_name FROM line_items WHERE id = ?", (item_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    if not row:
+        return
+
+    name = row["clean_name"] or row["raw_name"]
+
+    await db.execute(
+        "UPDATE line_items SET category = ?, category_source = 'manual', corrected = 1 WHERE id = ?",
+        (new_category, item_id),
+    )
+    await save_mapping(db, name, new_category, source="manual")
+    await db.commit()

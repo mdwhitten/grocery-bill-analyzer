@@ -1,0 +1,65 @@
+import { apiFetch } from './client'
+import type { Receipt, ReceiptSummary, SaveReceiptBody } from '../types'
+
+export interface ProcessingResult {
+  receipt_id: number
+  store_name: string
+  receipt_date: string | null
+  ocr_raw: string
+  subtotal: number | null
+  tax: number | null
+  discounts: number
+  total: number | null
+  total_verified: boolean
+  verification_message: string
+  thumbnail_path: string | null
+  items: Receipt['items']
+}
+
+export async function listReceipts(): Promise<ReceiptSummary[]> {
+  return apiFetch<ReceiptSummary[]>('/receipts')
+}
+
+export async function getReceipt(id: number): Promise<Receipt> {
+  return apiFetch<Receipt>(`/receipts/${id}`)
+}
+
+export async function uploadReceipt(
+  file: File,
+  cropCorners?: [number, number][] | null,
+): Promise<ProcessingResult> {
+  const form = new FormData()
+  form.append('file', file)
+  if (cropCorners) {
+    form.append('crop_corners', JSON.stringify(cropCorners))
+  }
+  const res = await fetch('/api/receipts/upload', { method: 'POST', body: form })
+  if (!res.ok) {
+    let detail = res.statusText
+    try { const b = await res.json(); detail = b.detail ?? detail } catch { /* ignore */ }
+    throw new Error(`Upload failed: ${detail}`)
+  }
+  return res.json() as Promise<ProcessingResult>
+}
+
+export async function saveReceipt(
+  id: number,
+  body: SaveReceiptBody,
+): Promise<{ status: string }> {
+  return apiFetch(`/receipts/${id}/save`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
+export async function deleteReceipt(id: number): Promise<void> {
+  return apiFetch(`/receipts/${id}`, { method: 'DELETE' })
+}
+
+export function receiptThumbnailUrl(id: number): string {
+  return `/api/receipts/${id}/thumbnail`
+}
+
+export function receiptImageUrl(id: number): string {
+  return `/api/receipts/${id}/image`
+}
