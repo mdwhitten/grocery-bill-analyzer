@@ -42,8 +42,8 @@ export function Dashboard({ onNavigate, onOpenReceipt }: DashboardProps) {
     ? Math.round(Math.abs(monthDiff / prevMonthTotal) * 100)
     : 0
 
-  const pendingCount  = receipts.filter(r => r.status !== 'verified').length
-  const verifiedCount = receipts.filter(r => r.status === 'verified').length
+  const pendingCount = receipts.filter(r => r.status !== 'verified').length
+  const avgTrip      = summary?.avg_trip ?? null
 
   // Top category this month
   const catEntries = latestMonth
@@ -81,10 +81,10 @@ export function Dashboard({ onNavigate, onOpenReceipt }: DashboardProps) {
           icon="🏆"
         />
         <StatCard
-          eyebrow="Verified"
-          value={String(verifiedCount)}
-          sub={`of ${receipts.length} receipts`}
-          icon="✅"
+          eyebrow="Avg Trip"
+          value={avgTrip != null ? fmt(avgTrip) : '—'}
+          sub="last 3 months"
+          icon="🛒"
         />
       </div>
 

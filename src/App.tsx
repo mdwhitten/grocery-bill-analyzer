@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AppShell } from './components/layout/AppShell'
 import { Dashboard } from './pages/Dashboard'
 import { AllReceipts } from './pages/AllReceipts'
@@ -15,6 +15,29 @@ import type { ProcessingResult } from './api/receipts'
 import type { Receipt, SaveReceiptBody } from './types'
 import { ArrowLeft, Save } from 'lucide-react'
 import './index.css'
+
+// ── URL ↔ Page/receiptId ──────────────────────────────────────────────────────
+
+type RouteState = { page: Page; receiptId: number | null }
+
+function parseUrl(path: string): RouteState {
+  const reviewMatch = path.match(/^\/receipts\/(\d+)$/)
+  if (reviewMatch) return { page: 'review', receiptId: Number(reviewMatch[1]) }
+  const map: Record<string, Page> = {
+    '/': 'dashboard', '/receipts': 'receipts', '/trends': 'trends',
+    '/categories': 'categories', '/learned': 'learned',
+  }
+  return { page: map[path] ?? 'dashboard', receiptId: null }
+}
+
+function pageToPath(page: Page, receiptId?: number | null): string {
+  if (page === 'review' && receiptId != null) return `/receipts/${receiptId}`
+  const map: Record<Page, string> = {
+    dashboard: '/', receipts: '/receipts', trends: '/trends',
+    categories: '/categories', learned: '/learned', review: '/receipts',
+  }
+  return map[page]
+}
 
 const PAGE_TITLES: Record<Page, string> = {
   dashboard:  'Dashboard',
@@ -105,49 +128,60 @@ function ReviewLoader({ receiptId, freshResult, onSaved, onClose, onRescan }: Re
 // ── Root App ──────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [page, setPage]             = useState<Page>('dashboard')
-  const [receiptId, setReceiptId]   = useState<number | null>(null)
+  // Initialise state from the current URL so direct links and refreshes work
+  const [route, setRoute]             = useState<RouteState>(() => parseUrl(window.location.pathname))
   const [freshResult, setFreshResult] = useState<ProcessingResult | null>(null)
-  const [uploadOpen, setUploadOpen] = useState(false)
+  const [uploadOpen, setUploadOpen]   = useState(false)
 
-  function openReceipt(id: number) {
-    setReceiptId(id)
-    setFreshResult(null)
-    setPage('review')
-  }
+  const { page, receiptId } = route
+
+  // Push a new history entry and update state
+  const navigate = useCallback((newPage: Page, newReceiptId?: number | null) => {
+    const newId = newReceiptId ?? null
+    window.history.pushState({ page: newPage, receiptId: newId }, '', pageToPath(newPage, newId))
+    setRoute({ page: newPage, receiptId: newId })
+  }, [])
+
+  // Browser back / forward
+  useEffect(() => {
+    function onPopState(e: PopStateEvent) {
+      setRoute(e.state?.page
+        ? { page: e.state.page, receiptId: e.state.receiptId ?? null }
+        : parseUrl(window.location.pathname))
+      setFreshResult(null)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  // Stamp state onto the initial history entry so popstate fires on first back
+  useEffect(() => {
+    window.history.replaceState({ page, receiptId }, '', window.location.pathname)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function openReceipt(id: number) { setFreshResult(null); navigate('review', id) }
 
   function handleUploadSuccess(result: ProcessingResult) {
-    setUploadOpen(false)
-    setReceiptId(result.receipt_id)
-    setFreshResult(result)
-    setPage('review')
+    setUploadOpen(false); setFreshResult(result); navigate('review', result.receipt_id)
   }
 
-  function handleRescan() {
-    setPage('receipts')
-    setReceiptId(null)
-    setFreshResult(null)
-    setUploadOpen(true)
-  }
+  function handleRescan() { setFreshResult(null); navigate('receipts'); setUploadOpen(true) }
 
-  const isReview = page === 'review'
-
-  // Derive topbar title for review page from fresh result or just use generic label
+  const isReview    = page === 'review'
   const reviewTitle = isReview
-    ? (freshResult?.store_name ?? 'Receipt') +
-      (freshResult?.receipt_date ? ` · ${freshResult.receipt_date}` : '')
+    ? (freshResult?.store_name ?? 'Receipt') + (freshResult?.receipt_date ? ` · ${freshResult.receipt_date}` : '')
     : PAGE_TITLES[page]
 
   return (
     <>
       <AppShell
         currentPage={page}
-        onNavigate={setPage}
+        onNavigate={p => { setFreshResult(null); navigate(p) }}
         onUpload={() => setUploadOpen(true)}
         topbarTitle={reviewTitle}
         topbarLeft={isReview ? (
           <button
-            onClick={() => setPage('receipts')}
+            onClick={() => navigate('receipts')}
             className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors mr-2"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -158,10 +192,10 @@ export default function App() {
           <SaveButtonSlot receiptId={receiptId} freshResult={freshResult} />
         ) : undefined}
       >
-        <div key={page} className="animate-[fadeUp_200ms_ease-out]">
+        <div key={`${page}-${receiptId}`} className="animate-[fadeUp_200ms_ease-out]">
 
           {page === 'dashboard' && (
-            <Dashboard onNavigate={setPage} onOpenReceipt={openReceipt} />
+            <Dashboard onNavigate={p => navigate(p)} onOpenReceipt={openReceipt} />
           )}
 
           {page === 'receipts' && (
@@ -172,32 +206,27 @@ export default function App() {
             <ReviewLoader
               receiptId={receiptId}
               freshResult={freshResult}
-              onSaved={() => setPage('receipts')}
-              onClose={() => setPage('receipts')}
+              onSaved={() => navigate('receipts')}
+              onClose={() => navigate('receipts')}
               onRescan={handleRescan}
             />
           )}
 
-          {page === 'trends' && <Trends />}
-
+          {page === 'trends'     && <Trends />}
           {page === 'categories' && <Categories />}
-
-          {page === 'learned' && <LearnedItems />}
+          {page === 'learned'    && <LearnedItems />}
 
         </div>
       </AppShell>
 
       {uploadOpen && (
-        <UploadModal
-          onClose={() => setUploadOpen(false)}
-          onSuccess={handleUploadSuccess}
-        />
+        <UploadModal onClose={() => setUploadOpen(false)} onSuccess={handleUploadSuccess} />
       )}
     </>
   )
 }
 
-// Small helper — Save button in topbar (needs access to the save mutation)
+// ── Topbar Save button ────────────────────────────────────────────────────────
 function SaveButtonSlot({
   receiptId,
   freshResult,
