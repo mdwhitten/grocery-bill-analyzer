@@ -1,73 +1,98 @@
-# React + TypeScript + Vite
+# Pantry — Receipt Tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Self-hosted grocery receipt tracker. Scan receipts with your phone or browser, let OCR + Claude Vision extract items and categories, then review and verify your spending.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+| Layer | Technology |
+|---|---|
+| Frontend | React 19 + TypeScript + Vite + Tailwind CSS 4 |
+| Backend | FastAPI + Python 3.12 + SQLite (aiosqlite) |
+| OCR | Tesseract + Claude Vision (claude-haiku-4-5) |
+| State | TanStack Query v5 |
+| Container | Docker Compose — nginx (frontend) + uvicorn (backend) |
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Upload receipts** — drag-and-drop or file picker, JPG/PNG/PDF
+- **OCR + AI parsing** — Tesseract extracts text; Claude Vision enriches store name, date, and line items
+- **Review & verify** — correct categories and prices before saving; total verification check
+- **Learned items** — corrections are remembered and applied automatically on future scans
+- **Trends** — stacked bar chart of monthly spending by category with month-over-month deltas
+- **Categories** — built-in and custom categories with icons, colors, enable/disable
 
-## Expanding the ESLint configuration
+## Quick Start
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Prerequisites
+- Docker + Docker Compose
+- An [Anthropic API key](https://console.anthropic.com/)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Run
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+```bash
+git clone <repo>
+cd pantry-react
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# Copy env file and add your API key
+cp .env.example .env
+# Edit .env and set ANTHROPIC_API_KEY=sk-ant-...
+
+docker compose up --build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Then open **http://localhost**.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Development (hot reload)
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+# Terminal 1 — backend (auto-reloads on Python changes)
+docker compose up backend
+
+# Terminal 2 — frontend (Vite HMR)
+npm install
+npm run dev
+# Opens http://localhost:5173, proxies /api → http://localhost:8000
+```
+
+## Project Structure
+
+```
+pantry-react/
+├── src/                      # React frontend (Vite + TypeScript)
+│   ├── api/                  # Fetch wrappers for each API resource
+│   ├── hooks/                # TanStack Query hooks
+│   ├── components/           # Shared UI components
+│   ├── pages/                # One file per page/route
+│   └── types.ts              # Shared TypeScript interfaces
+├── backend/                  # FastAPI app
+│   ├── routers/              # receipts, categories, items, trends
+│   ├── services/             # ocr_service, image_service, categorize_service
+│   ├── models/schemas.py     # Pydantic models
+│   └── db/database.py        # SQLite schema + seed data
+├── docker/
+│   ├── Dockerfile.nginx      # Multi-stage: Node build → nginx serve
+│   └── nginx.conf            # Proxy /api → backend, SPA fallback
+└── docker-compose.yml
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Yes | API key for Claude Vision categorization |
+| `DB_PATH` | No | SQLite path (default: `/data/pantry.db`) |
+| `IMAGE_DIR` | No | Image storage path (default: `/data/images`) |
+
+## Data Persistence
+
+Receipt images and the SQLite database are stored in a Docker named volume (`pantry-data`). Data survives container restarts and rebuilds.
+
+```bash
+# Backup
+docker run --rm -v pantry-react_pantry-data:/data -v $(pwd):/backup \
+  alpine tar czf /backup/pantry-backup.tar.gz /data
+
+# Restore
+docker run --rm -v pantry-react_pantry-data:/data -v $(pwd):/backup \
+  alpine tar xzf /backup/pantry-backup.tar.gz -C /
 ```

@@ -208,8 +208,7 @@ function SaveButtonSlot({
   // This is just a visual placeholder; actual save is triggered inside ReviewReceipt
   // We expose a global trigger via a CustomEvent for simplicity
   if (!receiptId) return null
-  const isPending = !freshResult  // fresh = pending save; reopened = already saved once
-  if (!isPending) return null     // verified receipts don't show topbar save
+  if (!freshResult) return null   // only show topbar Save for fresh uploads
 
   return (
     <button
