@@ -1,4 +1,4 @@
-import { apiFetch } from './client'
+import { apiFetch, apiUrl } from './client'
 import type { Receipt, ReceiptSummary, SaveReceiptBody } from '../types'
 
 export interface ProcessingResult {
@@ -33,7 +33,7 @@ export async function uploadReceipt(
   if (cropCorners) {
     form.append('crop_corners', JSON.stringify(cropCorners))
   }
-  const res = await fetch('/api/receipts/upload', { method: 'POST', body: form })
+  const res = await fetch(apiUrl('/receipts/upload'), { method: 'POST', body: form })
   if (!res.ok) {
     let detail = res.statusText
     try { const b = await res.json(); detail = b.detail ?? detail } catch { /* ignore */ }
@@ -57,11 +57,11 @@ export async function deleteReceipt(id: number): Promise<void> {
 }
 
 export function receiptThumbnailUrl(id: number): string {
-  return `/api/receipts/${id}/thumbnail`
+  return apiUrl(`/receipts/${id}/thumbnail`)
 }
 
 export function receiptImageUrl(id: number): string {
-  return `/api/receipts/${id}/image`
+  return apiUrl(`/receipts/${id}/image`)
 }
 
 // ── Crop / Edge detection ──────────────────────────────────────────────────
@@ -72,7 +72,7 @@ export type CropCorners = [[number, number], [number, number], [number, number],
 export async function detectEdgesRaw(file: File): Promise<CropCorners | null> {
   const form = new FormData()
   form.append('file', file)
-  const res = await fetch('/api/receipts/detect-edges-raw', { method: 'POST', body: form })
+  const res = await fetch(apiUrl('/receipts/detect-edges-raw'), { method: 'POST', body: form })
   if (!res.ok) return null
   const data = await res.json()
   return data.corners ?? null
@@ -80,7 +80,7 @@ export async function detectEdgesRaw(file: File): Promise<CropCorners | null> {
 
 /** Detect receipt edges on an already-saved receipt image. */
 export async function detectEdges(receiptId: number): Promise<CropCorners | null> {
-  const res = await fetch(`/api/receipts/${receiptId}/detect-edges`)
+  const res = await fetch(apiUrl(`/receipts/${receiptId}/detect-edges`))
   if (!res.ok) return null
   const data = await res.json()
   return data.corners ?? null
@@ -91,7 +91,7 @@ export async function cropReceipt(
   receiptId: number,
   corners: CropCorners,
 ): Promise<{ status: string; thumbnail_path: string }> {
-  const res = await fetch(`/api/receipts/${receiptId}/crop`, {
+  const res = await fetch(apiUrl(`/receipts/${receiptId}/crop`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ corners }),
