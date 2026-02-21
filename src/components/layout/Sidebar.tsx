@@ -61,10 +61,10 @@ export function Sidebar({ current, onNavigate, onUpload, mobileOpen, onMobileClo
         <div className="flex items-center justify-between px-5 h-16 shrink-0 border-b border-white/5">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-[#03a9f4] rounded-xl flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-[#03a9f4]/30">
-              P
+              T
             </div>
             <div>
-              <p className="text-white font-semibold text-sm leading-tight">Pantry</p>
+              <p className="text-white font-semibold text-sm leading-tight">Tabulate</p>
               <p className="text-[#4a4a6a] text-[10px] uppercase tracking-widest">Receipt Tracker</p>
             </div>
           </div>

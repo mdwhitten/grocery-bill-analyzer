@@ -1,4 +1,4 @@
-# Pantry React — Developer Context
+# Tabulate — Developer Context
 
 Self-hosted grocery receipt tracker. React 19 + TypeScript + Vite + Tailwind CSS 4 frontend, FastAPI + SQLite backend.
 
@@ -22,7 +22,7 @@ src/
   mockData.ts   # Mock data used during dev/testing
   App.tsx       # Root: page routing state, ReviewLoader, UploadModal, topbar wiring
   main.tsx      # Entry: QueryClientProvider wrapping App
-backend/        # FastAPI app (copied from original pantry project)
+backend/        # FastAPI app
   routers/      # receipts, categories, items, trends
   services/     # ocr_service, image_service, categorize_service
   models/schemas.py
@@ -64,10 +64,10 @@ The app uses simple React state (`page` string in `App.tsx`) — no React Router
 The Save button lives in `App.tsx` (topbar) but save logic lives in `ReviewReceipt`. They communicate via a `CustomEvent`:
 ```ts
 // Topbar fires:
-window.dispatchEvent(new CustomEvent('pantry:save-receipt'))
+window.dispatchEvent(new CustomEvent('tabulate:save-receipt'))
 
 // ReviewReceipt listens:
-window.addEventListener('pantry:save-receipt', handler)
+window.addEventListener('tabulate:save-receipt', handler)
 // Uses useRef pattern to keep handler fresh without re-registering:
 const handleSaveRef = useRef<(() => Promise<void>) | null>(null)
 useEffect(() => { handleSaveRef.current = handleSave }, [handleSave])
@@ -104,6 +104,6 @@ Each hooks file exports a `*Keys` object (e.g. `receiptKeys`, `categoryKeys`) us
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...   # Required for Claude Vision
-DB_PATH=/data/pantry.db        # Optional, defaults shown
+DB_PATH=/data/tabulate.db      # Optional, defaults shown
 IMAGE_DIR=/data/images         # Optional, defaults shown
 ```

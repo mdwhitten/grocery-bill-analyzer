@@ -1,4 +1,4 @@
-# Pantry — Receipt Tracker
+# Tabulate — Receipt Tracker
 
 Self-hosted grocery receipt tracker. Scan receipts with your phone or browser, let OCR + Claude Vision extract items and categories, then review and verify your spending.
 
@@ -31,7 +31,7 @@ Self-hosted grocery receipt tracker. Scan receipts with your phone or browser, l
 
 ```bash
 git clone <repo>
-cd pantry-react
+cd tabulate
 
 # Copy env file and add your API key
 cp .env.example .env
@@ -57,7 +57,7 @@ npm run dev
 ## Project Structure
 
 ```
-pantry-react/
+tabulate/
 ├── src/                      # React frontend (Vite + TypeScript)
 │   ├── api/                  # Fetch wrappers for each API resource
 │   ├── hooks/                # TanStack Query hooks
@@ -80,19 +80,19 @@ pantry-react/
 | Variable | Required | Description |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Yes | API key for Claude Vision categorization |
-| `DB_PATH` | No | SQLite path (default: `/data/pantry.db`) |
+| `DB_PATH` | No | SQLite path (default: `/data/tabulate.db`) |
 | `IMAGE_DIR` | No | Image storage path (default: `/data/images`) |
 
 ## Data Persistence
 
-Receipt images and the SQLite database are stored in a Docker named volume (`pantry-data`). Data survives container restarts and rebuilds.
+Receipt images and the SQLite database are stored in a Docker named volume (`tabulate-data`). Data survives container restarts and rebuilds.
 
 ```bash
 # Backup
-docker run --rm -v pantry-react_pantry-data:/data -v $(pwd):/backup \
-  alpine tar czf /backup/pantry-backup.tar.gz /data
+docker run --rm -v tabulate_tabulate-data:/data -v $(pwd):/backup \
+  alpine tar czf /backup/tabulate-backup.tar.gz /data
 
 # Restore
-docker run --rm -v pantry-react_pantry-data:/data -v $(pwd):/backup \
-  alpine tar xzf /backup/pantry-backup.tar.gz -C /
+docker run --rm -v tabulate_tabulate-data:/data -v $(pwd):/backup \
+  alpine tar xzf /backup/tabulate-backup.tar.gz -C /
 ```

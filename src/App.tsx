@@ -256,7 +256,7 @@ function SaveButtonSlot({
   return (
     <button
       className="flex items-center gap-1.5 px-3 py-1.5 bg-[#03a9f4] text-white text-xs font-semibold rounded-lg hover:bg-[#0290d1] transition-colors shadow-sm shadow-[#03a9f4]/30"
-      onClick={() => window.dispatchEvent(new CustomEvent('pantry:save-receipt'))}
+      onClick={() => window.dispatchEvent(new CustomEvent('tabulate:save-receipt'))}
     >
       <Save className="w-3.5 h-3.5" />
       Save

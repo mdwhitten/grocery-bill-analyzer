@@ -1,7 +1,7 @@
 import aiosqlite
 import os
 
-DB_PATH = os.environ.get("DB_PATH", "/data/pantry.db")
+DB_PATH = os.environ.get("DB_PATH", "/data/tabulate.db")
 
 async def get_db() -> aiosqlite.Connection:
     """Dependency: yields an open DB connection."""

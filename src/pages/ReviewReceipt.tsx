@@ -120,8 +120,8 @@ export function ReviewReceipt({
   const handleSaveRef = useRef<(() => Promise<void>) | null>(null)
   useEffect(() => {
     const handler = () => { handleSaveRef.current?.().catch(console.error) }
-    window.addEventListener('pantry:save-receipt', handler)
-    return () => window.removeEventListener('pantry:save-receipt', handler)
+    window.addEventListener('tabulate:save-receipt', handler)
+    return () => window.removeEventListener('tabulate:save-receipt', handler)
   }, [])
 
   // ── Derived verification ─────────────────────────────────────────────────

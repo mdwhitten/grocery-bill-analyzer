@@ -7,17 +7,17 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: pantry-backend
+    container_name: tabulate-backend
     restart: unless-stopped
     ports:
       - "8000:8000"
     env_file:
       - .env
     environment:
-      - DB_PATH=/data/pantry.db
+      - DB_PATH=/data/tabulate.db
       - IMAGE_DIR=/data/images
     volumes:
-      - pantry-data:/data
+      - tabulate-data:/data
       - ./backend:/app             # live reload during development
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
@@ -30,7 +30,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.nginx
-    container_name: pantry-nginx
+    container_name: tabulate-nginx
     restart: unless-stopped
     ports:
       - "80:80"
@@ -40,5 +40,5 @@ services:
       - backend
 
 volumes:
-  pantry-data:
+  tabulate-data:
     driver: local

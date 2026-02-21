@@ -8,7 +8,7 @@ from db.database import init_db
 from routers import receipts, items, categories, trends
 
 app = FastAPI(
-    title="Pantry — Grocery Bill Analyzer",
+    title="Tabulate — Grocery Receipt Tracker",
     description="Personal grocery receipt tracking with AI categorization",
     version="0.1.0",
 )
