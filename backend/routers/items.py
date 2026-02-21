@@ -9,7 +9,7 @@ from pydantic import BaseModel
 import aiosqlite
 
 from db.database import get_db
-from models.schemas import ItemMapping
+from models.schemas import ItemMapping, PaginatedMappings
 from services.categorize_service import apply_manual_correction, get_categories
 
 router = APIRouter()
@@ -40,33 +40,59 @@ async def update_item_category(
     return {"status": "ok", "item_id": item_id, "category": body.category}
 
 
-@router.get("/mappings", response_model=list[ItemMapping])
+@router.get("/mappings", response_model=PaginatedMappings)
 async def list_mappings(
     db: aiosqlite.Connection = Depends(get_db),
-    limit: int = 500,
+    limit: int = 50,
     offset: int = 0,
+    search: str = "",
+    category: str = "",
 ):
+    where_clauses = []
+    params: list = []
+
+    if search:
+        where_clauses.append(
+            "(display_name LIKE ? OR normalized_key LIKE ? OR category LIKE ?)"
+        )
+        q = f"%{search}%"
+        params.extend([q, q, q])
+
+    if category:
+        where_clauses.append("category = ?")
+        params.append(category)
+
+    where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
     async with db.execute(
-        """SELECT * FROM item_mappings
-           ORDER BY times_seen DESC, last_seen DESC
-           LIMIT ? OFFSET ?""",
-        (limit, offset),
+        f"SELECT COUNT(*) FROM item_mappings{where_sql}", params
+    ) as cur:
+        total = (await cur.fetchone())[0]
+
+    async with db.execute(
+        f"""SELECT * FROM item_mappings{where_sql}
+            ORDER BY times_seen DESC, last_seen DESC
+            LIMIT ? OFFSET ?""",
+        params + [limit, offset],
     ) as cur:
         rows = await cur.fetchall()
 
-    return [
-        ItemMapping(
-            id=r["id"],
-            normalized_key=r["normalized_key"],
-            display_name=r["display_name"],
-            category=r["category"],
-            source=r["source"],
-            times_seen=r["times_seen"],
-            last_seen=r["last_seen"],
-            created_at=r["created_at"],
-        )
-        for r in rows
-    ]
+    return PaginatedMappings(
+        total=total,
+        items=[
+            ItemMapping(
+                id=r["id"],
+                normalized_key=r["normalized_key"],
+                display_name=r["display_name"],
+                category=r["category"],
+                source=r["source"],
+                times_seen=r["times_seen"],
+                last_seen=r["last_seen"],
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ],
+    )
 
 
 @router.get("/categories")

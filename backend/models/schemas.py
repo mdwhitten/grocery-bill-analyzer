@@ -104,6 +104,10 @@ class ItemMapping(ItemMappingBase):
     class Config:
         from_attributes = True
 
+class PaginatedMappings(BaseModel):
+    items: List[ItemMapping]
+    total: int
+
 
 # ── Trends ─────────────────────────────────────────────
 class MonthlyCategoryTotal(BaseModel):

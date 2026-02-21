@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { Pencil, Trash2, Plus, Check, Loader2 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useCategoryList, useCreateCategory, useUpdateCategory, useDeleteCategory } from '../hooks/useCategories'
@@ -39,6 +40,126 @@ function ColorSwatches({ selected, onSelect }: { selected: string; onSelect: (c:
   )
 }
 
+// ── Emoji Picker ─────────────────────────────────────────────────────────────
+
+const EMOJI_OPTIONS: Record<string, [string, string][]> = {
+  'Produce':     [['🥬','leafy greens lettuce'],['🍎','apple fruit'],['🥕','carrot'],['🍌','banana'],['🍇','grapes'],['🍓','strawberry berry'],['🥑','avocado'],['🌽','corn'],['🍋','lemon citrus'],['🥦','broccoli'],['🍅','tomato'],['🌶️','pepper chili spicy'],['🥒','cucumber'],['🍑','peach'],['🫐','blueberry berry'],['🥭','mango']],
+  'Meat & Deli': [['🥩','steak beef meat'],['🍗','chicken poultry leg'],['🥓','bacon pork'],['🌭','hot dog sausage'],['🍖','meat bone ribs'],['🐔','chicken poultry'],['🐄','beef cow'],['🐖','pork pig'],['🦃','turkey'],['🥪','sandwich deli sub']],
+  'Seafood':     [['🐟','fish'],['🦐','shrimp prawn'],['🦞','lobster'],['🐙','octopus'],['🦀','crab'],['🍣','sushi']],
+  'Dairy & Eggs':[['🥛','milk'],['🧀','cheese'],['🥚','egg'],['🧈','butter'],['🍦','ice cream'],['🍶','yogurt']],
+  'Bakery':      [['🍞','bread loaf'],['🥐','croissant pastry'],['🥖','baguette french'],['🧁','cupcake muffin'],['🎂','cake birthday'],['🍰','cake slice pie'],['🥯','bagel'],['🥞','pancake waffle'],['🍩','donut doughnut'],['🍪','cookie biscuit']],
+  'Beverages':   [['🥤','soda drink cup'],['☕','coffee'],['🍷','wine'],['🍺','beer'],['🧃','juice box'],['🥂','champagne sparkling'],['🍵','tea'],['🧋','boba bubble tea'],['💧','water'],['🥃','whiskey liquor']],
+  'Snacks':      [['🍿','popcorn'],['🍫','chocolate candy bar'],['🥜','peanut nuts'],['🍬','candy sweet'],['🍭','lollipop'],['🧂','salt seasoning'],['🥨','pretzel'],['🍘','rice cracker']],
+  'Pantry':      [['🥫','canned can soup'],['🍝','pasta noodle spaghetti'],['🍚','rice grain'],['🫘','beans legume'],['🍯','honey'],['🥣','cereal oatmeal bowl'],['🫒','olive oil'],['🧄','garlic'],['📦','box package']],
+  'Frozen':      [['🧊','ice frozen'],['🍕','pizza'],['🥟','dumpling'],['🍨','ice cream frozen']],
+  'Household':   [['🧹','broom clean sweep'],['🧴','soap lotion bottle'],['🧻','toilet paper tissue'],['🧽','sponge'],['🪣','bucket mop'],['💡','light bulb'],['🕯️','candle'],['🧺','laundry basket']],
+  'Health':      [['💊','pill medicine vitamin'],['🩹','bandaid bandage'],['🪥','toothbrush dental'],['🧪','pharmacy lab']],
+  'Baby & Pets': [['👶','baby infant'],['🍼','bottle formula'],['🐾','pet paw'],['🐕','dog puppy']],
+  'Other':       [['🏷️','tag label price'],['🛒','cart shopping'],['💰','money cost'],['🎁','gift present'],['✨','sparkle special'],['⭐','star favorite']],
+}
+
+function EmojiPicker({ selected, onSelect, initialOpen = false }: { selected: string; onSelect: (e: string) => void; initialOpen?: boolean }) {
+  const [open, setOpen] = useState(initialOpen)
+  const [search, setSearch] = useState('')
+  const searchRef = useRef<HTMLInputElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const dropRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const dropHeight = 320 // matches max-h-[320px]
+  const gap = 6
+
+  const calcPos = useCallback(() => {
+    if (!btnRef.current) return null
+    const r = btnRef.current.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - r.bottom - gap
+    const top = spaceBelow >= dropHeight ? r.bottom + gap : r.top - gap - dropHeight
+    return { top, left: r.left }
+  }, [])
+
+  function handleOpen() {
+    if (open) { setOpen(false); setPos(null); setSearch(''); return }
+    setPos(calcPos())
+    setSearch('')
+    setOpen(true)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      if (btnRef.current?.contains(e.target as Node)) return
+      if (dropRef.current?.contains(e.target as Node)) return
+      setOpen(false); setPos(null); setSearch('')
+    }
+    function handleScroll() { setPos(calcPos()) }
+    document.addEventListener('mousedown', handleClick)
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
+  }, [open, calcPos])
+
+  // For initialOpen, compute position on mount
+  useEffect(() => {
+    if (initialOpen && !pos) setPos(calcPos())
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="flex-shrink-0">
+      <button ref={btnRef} type="button" onClick={handleOpen}
+        className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden hover:bg-gray-200 hover:ring-2 hover:ring-[#03a9f4]/30 transition-all cursor-pointer">
+        <span className="text-xl leading-none">{selected || '📦'}</span>
+      </button>
+      {open && pos && createPortal(
+        <div ref={dropRef} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
+          className="bg-white border border-gray-200 rounded-xl shadow-lg w-[280px] max-h-[320px] flex flex-col">
+          <div className="p-2 pb-0 flex-shrink-0">
+            <input ref={searchRef} type="text" value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search emojis..."
+              autoFocus
+              className="w-full text-xs bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#03a9f4]/30 focus:border-[#03a9f4]" />
+          </div>
+          <div className="p-3 pt-2 overflow-y-auto">
+            {(() => {
+              const q = search.toLowerCase().trim()
+              const filtered = Object.entries(EMOJI_OPTIONS).map(([group, items]) => {
+                const matched = q
+                  ? items.filter(([, kw]) => kw.includes(q) || group.toLowerCase().includes(q))
+                  : items
+                return [group, matched] as const
+              }).filter(([, items]) => items.length > 0)
+
+              if (filtered.length === 0) {
+                return <div className="text-xs text-gray-400 text-center py-4">No emojis found</div>
+              }
+
+              return filtered.map(([group, items]) => (
+                <div key={group} className="mb-2 last:mb-0">
+                  <div className="text-[10px] uppercase tracking-widest text-gray-400 font-semibold mb-1">{group}</div>
+                  <div className="flex flex-wrap gap-0.5">
+                    {items.map(([emoji]) => (
+                      <button key={emoji} type="button"
+                        onClick={() => { onSelect(emoji); setOpen(false); setSearch('') }}
+                        className={cn(
+                          'w-7 h-7 rounded-lg flex items-center justify-center text-base hover:bg-gray-100 transition-colors',
+                          selected === emoji && 'bg-blue-100 ring-1 ring-[#03a9f4]'
+                        )}>
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))
+            })()}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
 // ── Inline Edit Row ───────────────────────────────────────────────────────────
 
 interface EditRowProps {
@@ -46,27 +167,23 @@ interface EditRowProps {
   isBuiltin: boolean
   saveLabel: string
   saving?: boolean
+  initialIconPickerOpen?: boolean
   onChange: (d: EditDraft) => void
   onSave: () => void
   onCancel: () => void
 }
 
-function EditRow({ draft, isBuiltin, saveLabel, saving, onChange, onSave, onCancel }: EditRowProps) {
+function EditRow({ draft, isBuiltin, saveLabel, saving, initialIconPickerOpen, onChange, onSave, onCancel }: EditRowProps) {
   return (
     <div className="px-5 py-3.5 flex flex-col gap-3">
       <div className="flex items-center gap-3">
-        <div className="relative flex-shrink-0">
-          <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden">
+        {!isBuiltin ? (
+          <EmojiPicker selected={draft.icon} onSelect={icon => onChange({ ...draft, icon })} initialOpen={initialIconPickerOpen} />
+        ) : (
+          <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
             <span className="text-xl leading-none">{draft.icon || '📦'}</span>
           </div>
-          {!isBuiltin && (
-            <input type="text" value={draft.icon}
-              onChange={e => { const val = e.target.value; onChange({ ...draft, icon: val.slice(-2) || val }) }}
-              maxLength={8}
-              className="absolute inset-0 w-10 h-10 opacity-0 cursor-pointer"
-              title="Click to change emoji" placeholder="📦" />
-          )}
-        </div>
+        )}
 
         <input type="text" value={draft.name}
           onChange={e => onChange({ ...draft, name: e.target.value })}
@@ -111,30 +228,36 @@ interface ActiveRowProps {
   cat: Category
   isEditing: boolean
   editDraft: EditDraft | null
-  onEditStart: () => void
+  onEditStart: (openIconPicker?: boolean) => void
   onEditChange: (d: EditDraft) => void
   onEditSave: () => void
   onEditCancel: () => void
   onDisable: () => void
   onDelete: () => void
   saving?: boolean
+  iconPickerOpen?: boolean
 }
 
-function ActiveRow({ cat, isEditing, editDraft, onEditStart, onEditChange, onEditSave, onEditCancel, onDisable, onDelete, saving }: ActiveRowProps) {
+function ActiveRow({ cat, isEditing, editDraft, onEditStart, onEditChange, onEditSave, onEditCancel, onDisable, onDelete, saving, iconPickerOpen }: ActiveRowProps) {
   if (isEditing && editDraft) {
     return (
       <div className="border-b border-gray-50 bg-blue-50/30">
         <EditRow draft={editDraft} isBuiltin={cat.is_builtin} saveLabel="Save"
-          saving={saving} onChange={onEditChange} onSave={onEditSave} onCancel={onEditCancel} />
+          saving={saving} initialIconPickerOpen={iconPickerOpen} onChange={onEditChange} onSave={onEditSave} onCancel={onEditCancel} />
       </div>
     )
   }
 
   return (
     <div className="flex items-center gap-4 px-5 py-3.5 hover:bg-gray-50 rounded-xl group border-b border-gray-50 transition-colors">
-      <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+      <button type="button" onClick={cat.is_builtin ? undefined : () => onEditStart(true)}
+        className={cn(
+          'w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0',
+          !cat.is_builtin && 'hover:bg-gray-200 hover:ring-2 hover:ring-[#03a9f4]/30 transition-all cursor-pointer'
+        )}
+        title={cat.is_builtin ? undefined : 'Click to change icon'}>
         <span className="text-xl leading-none">{cat.icon}</span>
-      </div>
+      </button>
       <div className="w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
       <span className="text-sm font-medium text-gray-900">{cat.name}</span>
       {cat.is_builtin ? (
@@ -151,7 +274,7 @@ function ActiveRow({ cat, isEditing, editDraft, onEditStart, onEditChange, onEdi
           </button>
         ) : (
           <>
-            <button type="button" onClick={onEditStart}
+            <button type="button" onClick={() => onEditStart(false)}
               className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors text-gray-500 hover:bg-gray-100">
               <Pencil className="w-3 h-3" /> Edit
             </button>
@@ -200,6 +323,7 @@ export function Categories() {
 
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null)
+  const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [showNew, setShowNew]     = useState(false)
   const [newDraft, setNewDraft]   = useState<EditDraft>({
     name: '', icon: '📦', color: PRESET_COLORS[0],
@@ -208,13 +332,14 @@ export function Categories() {
   const activeCats   = categories.filter(c => !c.is_disabled)
   const disabledCats = categories.filter(c => c.is_disabled)
 
-  function startEdit(cat: Category) {
+  function startEdit(cat: Category, openIconPicker = false) {
     setEditingId(cat.id)
+    setIconPickerOpen(openIconPicker)
     setShowNew(false)
     setEditDraft({ name: cat.name, icon: cat.icon, color: cat.color })
   }
 
-  function cancelEdit() { setEditingId(null); setEditDraft(null) }
+  function cancelEdit() { setEditingId(null); setEditDraft(null); setIconPickerOpen(false) }
 
   async function saveEdit() {
     if (!editDraft || !editDraft.name.trim() || editingId == null) return
@@ -279,7 +404,8 @@ export function Categories() {
             <ActiveRow key={cat.id} cat={cat}
               isEditing={editingId === cat.id}
               editDraft={editingId === cat.id ? editDraft : null}
-              onEditStart={() => startEdit(cat)}
+              iconPickerOpen={editingId === cat.id ? iconPickerOpen : false}
+              onEditStart={(openPicker) => startEdit(cat, openPicker)}
               onEditChange={setEditDraft}
               onEditSave={saveEdit}
               onEditCancel={cancelEdit}

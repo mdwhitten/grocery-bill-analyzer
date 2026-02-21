@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { Search, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { Search, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useMappingList, useUpdateMappingCategory } from '../hooks/useMappings'
 import { useCategoryList } from '../hooks/useCategories'
 import { catColor, catIcon, relativeTime } from '../lib/utils'
@@ -7,27 +7,46 @@ import { SourceTag } from '../components/SourceTag'
 import { CategorySelect } from '../components/CategorySelect'
 import type { ItemMapping } from '../types'
 
+const PAGE_SIZE = 50
+
 export function LearnedItems() {
-  const { data: items = [], isLoading, isError } = useMappingList()
-  const { data: categories = [] }                = useCategoryList()
+  const { data: categories = [] } = useCategoryList()
   const updateCat = useUpdateMappingCategory()
 
   const [search, setSearch]       = useState('')
-  const [catFilter, setCatFilter] = useState('All')
+  const [catFilter, setCatFilter] = useState('')
+  const [page, setPage]           = useState(0)
 
-  const allCats = ['All', ...Array.from(new Set(items.map(i => i.category))).sort()]
+  // Debounce search to avoid hammering the API on every keystroke
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [debounceTimer, setDebounceTimer] = useState<ReturnType<typeof setTimeout> | null>(null)
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase()
-    return items.filter(m => {
-      const matchSearch = !q ||
-        m.display_name.toLowerCase().includes(q) ||
-        m.normalized_key.includes(q) ||
-        m.category.toLowerCase().includes(q)
-      const matchCat = catFilter === 'All' || m.category === catFilter
-      return matchSearch && matchCat
-    })
-  }, [items, search, catFilter])
+  function handleSearchChange(value: string) {
+    setSearch(value)
+    if (debounceTimer) clearTimeout(debounceTimer)
+    setDebounceTimer(setTimeout(() => {
+      setDebouncedSearch(value)
+      setPage(0)
+    }, 300))
+  }
+
+  function handleCatFilter(cat: string) {
+    setCatFilter(cat)
+    setPage(0)
+  }
+
+  const { data, isLoading, isError, isFetching } = useMappingList({
+    limit: PAGE_SIZE,
+    offset: page * PAGE_SIZE,
+    search: debouncedSearch || undefined,
+    category: catFilter || undefined,
+  })
+
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
+  const totalPages = Math.ceil(total / PAGE_SIZE)
+
+  const catNames = ['', ...categories.filter(c => !c.is_disabled).map(c => c.name)]
 
   function handleCategoryChange(id: number, category: string) {
     updateCat.mutate({ id, category })
@@ -41,28 +60,29 @@ export function LearnedItems() {
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           <input type="text" placeholder="Search items…" value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => handleSearchChange(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-[#03a9f4]/30 focus:border-[#03a9f4] transition-all placeholder:text-gray-400" />
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
-          {allCats.map(cat => (
-            <button key={cat} onClick={() => setCatFilter(cat)}
+          {catNames.map(cat => (
+            <button key={cat || '__all'} onClick={() => handleCatFilter(cat)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                 catFilter === cat
                   ? 'bg-gray-900 text-white'
                   : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700'
               }`}>
-              {cat !== 'All' && (
+              {cat && (
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: catColor(cat) }} />
               )}
-              {cat !== 'All' ? catIcon(cat) + ' ' : ''}{cat}
+              {cat ? catIcon(cat) + ' ' + cat : 'All'}
             </button>
           ))}
         </div>
 
         <span className="text-xs text-gray-400 ml-auto whitespace-nowrap">
-          {isLoading ? '…' : `${filtered.length} rule${filtered.length !== 1 ? 's' : ''}`}
+          {isLoading ? '…' : `${total} rule${total !== 1 ? 's' : ''}`}
+          {isFetching && !isLoading && <Loader2 className="w-3 h-3 animate-spin inline ml-1" />}
         </span>
       </div>
 
@@ -78,7 +98,7 @@ export function LearnedItems() {
             <p className="text-sm font-semibold text-red-500 mb-1">Failed to load learned items</p>
             <p className="text-xs text-gray-400">Check that the backend is running</p>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-4xl mb-3">📚</p>
             <p className="text-sm font-semibold text-gray-700 mb-1">No learned items found</p>
@@ -97,12 +117,34 @@ export function LearnedItems() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((m, i) => (
+              {items.map((m, i) => (
                 <LearnedItemRow key={m.id} mapping={m} index={i} categories={categories}
                   onCategoryChange={cat => handleCategoryChange(m.id, cat)} />
               ))}
             </tbody>
           </table>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-gray-50/40">
+            <span className="text-xs text-gray-400">
+              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
+            </span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage(p => p - 1)} disabled={page === 0}
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-200 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs font-medium text-gray-600 px-2 tabular-nums">
+                {page + 1} / {totalPages}
+              </span>
+              <button onClick={() => setPage(p => p + 1)} disabled={page >= totalPages - 1}
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-200 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -153,7 +195,6 @@ function LearnedItemRow({ mapping: m, index, categories, onCategoryChange }: Row
       </td>
 
       <td className="pr-4 py-3 text-right">
-        {/* Mappings don't have a delete endpoint, so this is intentionally absent */}
         <span className="w-6 h-6 inline-block" />
       </td>
     </tr>

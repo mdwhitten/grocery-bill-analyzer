@@ -142,12 +142,16 @@ async def categorize_items(
     # Stage 2 — Claude API for unknown items
     if unknown:
         ai_results = await _call_claude(unknown, store_name, db)
+        mapping_rows = []
         for item, ai in zip(unknown, ai_results):
             category = ai.get("category", "Other")
             confidence = float(ai.get("confidence", 0.7))
 
-            # Persist so we don't ask Claude again
-            await save_mapping(db, item.get("clean_name") or item["raw_name"], category, source="ai")
+            # Collect mapping data for batch upsert
+            name = item.get("clean_name") or item["raw_name"]
+            key = normalize_key(name)
+            display = name.strip().title()
+            mapping_rows.append((key, display, category, "ai"))
 
             results.append({
                 **item,
@@ -155,6 +159,20 @@ async def categorize_items(
                 "category_source": "ai",
                 "ai_confidence": confidence,
             })
+
+        # Batch-persist all new mappings in one DB call
+        await db.executemany(
+            """
+            INSERT INTO item_mappings (normalized_key, display_name, category, source, times_seen)
+            VALUES (?, ?, ?, ?, 1)
+            ON CONFLICT(normalized_key) DO UPDATE SET
+                category   = excluded.category,
+                source     = excluded.source,
+                times_seen = times_seen + 1,
+                last_seen  = datetime('now')
+            """,
+            mapping_rows,
+        )
 
     await db.commit()
 
@@ -185,7 +203,7 @@ async def _call_claude(items: list[dict], store_name: str, db: aiosqlite.Connect
     client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     try:
         message = await client.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-haiku-4-5",
             max_tokens=1024,
             system=system_prompt,
             messages=[{"role": "user", "content": json.dumps(payload)}],
