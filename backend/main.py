@@ -1,11 +1,28 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+import logging
 import os
+import time
 
 from db.database import init_db
 from routers import receipts, items, categories, trends
+
+# ── Logging setup ─────────────────────────────────────────────────────────────
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+# Quiet noisy libraries unless we're in DEBUG
+if LOG_LEVEL != "DEBUG":
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+logger = logging.getLogger("tabulate")
 
 app = FastAPI(
     title="Tabulate — Grocery Receipt Tracker",
@@ -36,8 +53,23 @@ if os.path.exists(FRONTEND_DIR):
     async def serve_frontend():
         return FileResponse(f"{FRONTEND_DIR}/index.html")
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    elapsed = (time.time() - start) * 1000
+    if LOG_LEVEL == "DEBUG" or response.status_code >= 400:
+        logger.log(
+            logging.WARNING if response.status_code >= 400 else logging.DEBUG,
+            "%s %s → %s (%.0fms)",
+            request.method, request.url.path, response.status_code, elapsed,
+        )
+    return response
+
 @app.on_event("startup")
 async def on_startup():
+    logger.info("Starting Tabulate v0.1.0  LOG_LEVEL=%s  DB=%s",
+                LOG_LEVEL, os.environ.get("DB_PATH", "(default)"))
     await init_db()
 
 @app.get("/api/health")

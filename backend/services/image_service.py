@@ -12,8 +12,11 @@ detect_receipt_edges(image_bytes)
 """
 
 import io
+import logging
 import os
 import math
+
+logger = logging.getLogger("tabulate.image")
 
 try:
     from PIL import Image, ImageFilter
@@ -57,10 +60,10 @@ def generate_thumbnail(image_bytes: bytes, out_path: str) -> str | None:
 
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         img.save(out_path, format="JPEG", quality=THUMB_Q, optimize=True)
-        print(f"[thumb] Saved {os.path.getsize(out_path)//1024} KB → {out_path}")
+        logger.debug("Thumbnail saved %d KB → %s", os.path.getsize(out_path)//1024, out_path)
         return out_path
     except Exception as e:
-        print(f"[thumb] Failed: {e}")
+        logger.error("Thumbnail failed: %s", e)
         return None
 
 
@@ -124,11 +127,11 @@ def detect_receipt_edges(image_bytes: bytes) -> list[list[float]] | None:
 
         # Map back to fractions of the original image
         result = [[pt[0] / work_w, pt[1] / work_h] for pt in corners]
-        print(f"[edges] Detected corners (fractions): {result}")
+        logger.debug("Detected corners (fractions): %s", result)
         return result
 
     except Exception as e:
-        print(f"[edges] Detection failed: {e}")
+        logger.warning("Edge detection failed: %s", e)
         return None
 
 
@@ -221,7 +224,7 @@ def _find_receipt_corners(
 
     # Reject if the box covers essentially the whole image
     if (x_max - x_min) > w * 0.92 and (y_max - y_min) > h * 0.92:
-        print(f"[edges] Box too large ({x_max-x_min}x{y_max-y_min} vs {w}x{h}), rejecting")
+        logger.debug("Box too large (%dx%d vs %dx%d), rejecting", x_max-x_min, y_max-y_min, w, h)
         return None
 
     return [[x_min, y_min], [x_max, y_min], [x_max, y_max], [x_min, y_max]]

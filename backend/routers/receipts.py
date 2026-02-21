@@ -7,6 +7,7 @@ GET  /api/receipts/{id}       — get receipt with line items
 POST /api/receipts/{id}/save  — finalize receipt, apply corrections
 DELETE /api/receipts/{id}     — remove a receipt
 """
+import logging
 import os
 import uuid
 import shutil
@@ -24,6 +25,7 @@ from services.ocr_service import extract_text_from_image, parse_receipt_text, pa
 from services.categorize_service import categorize_items, apply_manual_correction
 from services.image_service import generate_thumbnail, detect_receipt_edges
 
+logger = logging.getLogger("tabulate.receipts")
 router = APIRouter()
 
 IMAGE_DIR = os.environ.get("IMAGE_DIR", "/data/images")
@@ -111,7 +113,7 @@ async def upload_receipt(
         _img.save(_buf, format="JPEG", quality=92, optimize=True)
         contents = _buf.getvalue()
     except Exception as e:
-        print(f"[upload] EXIF normalise failed, using raw bytes: {e}")
+        logger.warning("EXIF normalise failed, using raw bytes: %s", e)
 
     # Apply user crop if provided (corners as fractions of EXIF-corrected image dimensions)
     if crop_corners:
@@ -131,9 +133,9 @@ async def upload_receipt(
                     buf = _io.BytesIO()
                     img.save(buf, format="JPEG", quality=92, optimize=True)
                     contents = buf.getvalue()
-                    print(f"[upload] Cropped to ({x_min},{y_min})–({x_max},{y_max})")
+                    logger.info("Cropped to (%d,%d)–(%d,%d)", x_min, y_min, x_max, y_max)
         except Exception as e:
-            print(f"[upload] Crop failed, using full image: {e}")
+            logger.warning("Crop failed, using full image: %s", e)
 
     # Save image to disk — always .jpg since we re-encoded above
     ext = ".jpg"
@@ -352,34 +354,45 @@ async def list_receipts(
     offset: int = 0,
     db: aiosqlite.Connection = Depends(get_db),
 ):
-    async with db.execute(
-        """
-        SELECT r.id, r.store_name, r.receipt_date, r.scanned_at,
-               r.total, r.total_verified, r.status,
-               COUNT(li.id) as item_count
-        FROM receipts r
-        LEFT JOIN line_items li ON li.receipt_id = r.id
-        GROUP BY r.id
-        ORDER BY r.scanned_at DESC
-        LIMIT ? OFFSET ?
-        """,
-        (limit, offset),
-    ) as cur:
-        rows = await cur.fetchall()
+    try:
+        async with db.execute(
+            """
+            SELECT r.id, r.store_name, r.receipt_date, r.scanned_at,
+                   r.total, r.total_verified, r.status,
+                   COUNT(li.id) as item_count
+            FROM receipts r
+            LEFT JOIN line_items li ON li.receipt_id = r.id
+            GROUP BY r.id
+            ORDER BY r.scanned_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        ) as cur:
+            rows = await cur.fetchall()
+    except Exception:
+        logger.exception("DB query failed in list_receipts")
+        raise
 
-    return [
-        ReceiptSummary(
-            id=row["id"],
-            store_name=row["store_name"],
-            receipt_date=row["receipt_date"],
-            scanned_at=row["scanned_at"],
-            total=row["total"],
-            item_count=row["item_count"],
-            total_verified=bool(row["total_verified"]),
-            status=row["status"],
-        )
-        for row in rows
-    ]
+    results = []
+    for row in rows:
+        try:
+            results.append(ReceiptSummary(
+                id=row["id"],
+                store_name=row["store_name"] or "Unknown Store",
+                receipt_date=row["receipt_date"],
+                scanned_at=row["scanned_at"] or "",
+                total=row["total"],
+                item_count=row["item_count"],
+                total_verified=bool(row["total_verified"]),
+                status=row["status"] or "pending",
+            ))
+        except Exception:
+            logger.exception("Failed to serialize receipt id=%s, raw=%s",
+                             row["id"], dict(row))
+            raise
+
+    logger.debug("list_receipts returning %d receipts", len(results))
+    return results
 
 
 # ── Get Single Receipt ────────────────────────────────────────────────────────

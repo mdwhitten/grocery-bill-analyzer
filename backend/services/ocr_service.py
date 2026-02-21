@@ -5,6 +5,7 @@ second, higher-quality pass is made via Claude Vision which reads the image
 directly and returns structured JSON — bypassing fragile regex parsing
 entirely for store name, date, line items and totals.
 """
+import logging
 import re
 import io
 import os
@@ -13,13 +14,15 @@ import base64
 from pathlib import Path
 from typing import Optional
 
+logger = logging.getLogger("tabulate.ocr")
+
 try:
     import pytesseract
     from PIL import Image, ImageEnhance, ImageFilter
     OCR_AVAILABLE = True
 except ImportError:
     OCR_AVAILABLE = False
-    print("[ocr] pytesseract/Pillow not available — OCR disabled")
+    logger.warning("pytesseract/Pillow not available — OCR disabled")
 
 # Register HEIC/HEIF support via pillow-heif if available
 try:
@@ -28,7 +31,7 @@ try:
     HEIF_AVAILABLE = True
 except ImportError:
     HEIF_AVAILABLE = False
-    print("[ocr] pillow-heif not installed — HEIC files will not be supported")
+    logger.info("pillow-heif not installed — HEIC files will not be supported")
 
 
 def preprocess_image(image: "Image.Image") -> "Image.Image":
@@ -380,16 +383,16 @@ def _prepare_image_for_vision(image_bytes: bytes) -> tuple[bytes, str]:
         if long_side > max_dim:
             scale = max_dim / long_side
             img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-            print(f"[vision] Resized image {w}×{h} → {img.size[0]}×{img.size[1]}")
+            logger.debug("Resized image %d×%d → %d×%d", w, h, img.size[0], img.size[1])
 
         # Save as JPEG — use quality=92 to preserve text legibility for Vision
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=92, optimize=True)
         compressed = buf.getvalue()
-        print(f"[vision] Image size: {len(image_bytes)//1024} KB → {len(compressed)//1024} KB")
+        logger.debug("Image size: %d KB → %d KB", len(image_bytes)//1024, len(compressed)//1024)
         return compressed, "image/jpeg"
     except Exception as e:
-        print(f"[vision] Image prep failed ({e}), sending original")
+        logger.warning("Image prep failed (%s), sending original", e)
         return image_bytes, orig_type
 
 
@@ -416,7 +419,7 @@ async def parse_receipt_with_vision(
 
     # Encode image as base64 for the Claude Messages API
     b64 = base64.standard_b64encode(vision_bytes).decode()
-    print(f"[vision] Sending {len(b64)//1024} KB b64 ({media_type}) to Claude Vision")
+    logger.info("Sending %d KB b64 (%s) to Claude Vision", len(b64)//1024, media_type)
 
     # Include Tesseract OCR text as a hint — gives Claude a text anchor for
     # name↔price alignment, which prevents the "price shifted one row" bug that
@@ -520,7 +523,7 @@ STEP 3 — Output ONLY this JSON (no prose, no markdown):
         raw = re.sub(r'\n?```$', '', raw)
         data = json.loads(raw)
     except Exception as e:
-        print(f"[vision] Claude Vision parse failed: {e} — using Tesseract fallback")
+        logger.warning("Claude Vision parse failed: %s — using Tesseract fallback", e)
         return ocr_fallback
 
     result = ParsedReceipt()
@@ -557,10 +560,10 @@ STEP 3 — Output ONLY this JSON (no prose, no markdown):
                 if abs(computed_total - round(lt, 2)) > 0.02:
                     # Try interpreting line_total / qty as the true unit price
                     corrected = round(lt / qty, 4)
-                    print(
-                        f"[vision] Price mismatch for '{name}': "
-                        f"{price} × {qty} = {computed_total} ≠ line_total {lt}. "
-                        f"Correcting unit price to {corrected}"
+                    logger.debug(
+                        "Price mismatch for '%s': %s × %s = %s ≠ line_total %s. "
+                        "Correcting unit price to %s",
+                        name, price, qty, computed_total, lt, corrected,
                     )
                     price = corrected
 
@@ -573,7 +576,7 @@ STEP 3 — Output ONLY this JSON (no prose, no markdown):
 
     # If Vision returned nothing useful, fall back entirely
     if not result.raw_items and ocr_fallback.raw_items:
-        print("[vision] Vision returned no items — using Tesseract items")
+        logger.warning("Vision returned no items — using Tesseract items")
         result.raw_items = ocr_fallback.raw_items
 
     return result

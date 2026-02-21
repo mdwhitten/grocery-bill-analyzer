@@ -10,6 +10,7 @@ Categories are fully dynamic — fetched from the `categories` table so
 user-created custom categories work exactly like built-ins.
 """
 import json
+import logging
 import os
 import re
 from typing import Optional
@@ -17,6 +18,7 @@ from typing import Optional
 import anthropic
 import aiosqlite
 
+logger = logging.getLogger("tabulate.categorize")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # Fallback list used only when DB is unavailable (e.g. during cold startup)
@@ -171,7 +173,7 @@ async def _call_claude(items: list[dict], store_name: str, db: aiosqlite.Connect
     fallback = [{"id": i["id"], "category": "Other", "confidence": 0.0} for i in items]
 
     if not ANTHROPIC_API_KEY:
-        print("[categorize] ANTHROPIC_API_KEY not set — skipping AI categorization")
+        logger.warning("ANTHROPIC_API_KEY not set — skipping AI categorization")
         return fallback
 
     system_prompt = await _build_system_prompt(db)
@@ -193,7 +195,7 @@ async def _call_claude(items: list[dict], store_name: str, db: aiosqlite.Connect
         raw = re.sub(r'\n?```$', '', raw)
         return json.loads(raw)
     except Exception as e:
-        print(f"[categorize] Claude API error: {e}")
+        logger.error("Claude API error: %s", e)
         return fallback
 
 

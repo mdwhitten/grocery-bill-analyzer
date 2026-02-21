@@ -1,6 +1,8 @@
+import logging
 import aiosqlite
 import os
 
+logger = logging.getLogger("tabulate.db")
 DB_PATH = os.environ.get("DB_PATH", "/data/tabulate.db")
 
 async def get_db() -> aiosqlite.Connection:
@@ -24,7 +26,7 @@ async def init_db():
             await db.execute(
                 "ALTER TABLE receipts ADD COLUMN thumbnail_path TEXT"
             )
-            print("[db] Migration: added receipts.thumbnail_path")
+            logger.info("Migration: added receipts.thumbnail_path")
         # categories.is_disabled (added after initial schema)
         async with db.execute("PRAGMA table_info(categories)") as cur:
             cat_cols = {row[1] async for row in cur}
@@ -32,9 +34,9 @@ async def init_db():
             await db.execute(
                 "ALTER TABLE categories ADD COLUMN is_disabled INTEGER NOT NULL DEFAULT 0"
             )
-            print("[db] Migration: added categories.is_disabled")
+            logger.info("Migration: added categories.is_disabled")
         await db.commit()
-    print(f"[db] Initialized at {DB_PATH}")
+    logger.info("Initialized at %s", DB_PATH)
 
 
 SCHEMA = """
