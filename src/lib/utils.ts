@@ -5,6 +5,8 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+import type { Category } from '../types'
+
 const CAT_COLORS: Record<string, string> = {
   'Produce': '#2d7a4f', 'Meat & Seafood': '#c4622d', 'Dairy & Eggs': '#2d5fa0',
   'Snacks': '#d4a017', 'Pantry': '#6b4fa0', 'Beverages': '#4a90a4',
@@ -16,8 +18,16 @@ const CAT_ICONS: Record<string, string> = {
   'Frozen': '🧊', 'Household': '🧹', 'Cleaning': '🧼', 'Other': '📦',
 }
 
-export function catColor(name: string): string { return CAT_COLORS[name] ?? '#888' }
-export function catIcon(name: string): string  { return CAT_ICONS[name]  ?? '📦' }
+export function catColor(name: string, categories?: Category[]): string {
+  const cat = categories?.find(c => c.name === name)
+  if (cat?.color) return cat.color
+  return CAT_COLORS[name] ?? '#888'
+}
+export function catIcon(name: string, categories?: Category[]): string {
+  const cat = categories?.find(c => c.name === name)
+  if (cat?.icon) return cat.icon
+  return CAT_ICONS[name]  ?? '📦'
+}
 
 export function fmt(n: number)      { return `$${n.toFixed(2)}` }
 export function fmtShort(n: number) { return n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${Math.round(n)}` }

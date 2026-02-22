@@ -294,14 +294,16 @@ export default function App() {
 
 // ── Topbar receipt actions (Save + Approve) ──────────────────────────────────
 function TopbarReceiptActions({ receiptId }: { receiptId: number | null }) {
-  const [visible, setVisible] = useState(false)
-  const [dirty, setDirty]     = useState(false)
+  const [visible, setVisible]   = useState(false)
+  const [dirty, setDirty]       = useState(false)
+  const [verified, setVerified] = useState(false)
 
   useEffect(() => {
     const poll = () => {
       const w = window as any
       setVisible(!!w.__tabulate_isEditable)
       setDirty(!!w.__tabulate_isDirty)
+      setVerified(!!w.__tabulate_isVerified)
     }
     poll()
     const id = setInterval(poll, 200)
@@ -320,13 +322,15 @@ function TopbarReceiptActions({ receiptId }: { receiptId: number | null }) {
         <Save className="w-4 h-4" />
         Save
       </button>
-      <button
-        className="flex items-center gap-1.5 h-9 px-3 text-xs font-semibold rounded-lg transition-colors text-white bg-green-600 hover:bg-green-700 shadow-sm shadow-green-600/30"
-        onClick={() => window.dispatchEvent(new CustomEvent('tabulate:approve-receipt'))}
-      >
-        <CheckCircle className="w-4 h-4" />
-        Approve
-      </button>
+      {!verified && (
+        <button
+          className="flex items-center gap-1.5 h-9 px-3 text-xs font-semibold rounded-lg transition-colors text-white bg-green-600 hover:bg-green-700 shadow-sm shadow-green-600/30"
+          onClick={() => window.dispatchEvent(new CustomEvent('tabulate:approve-receipt'))}
+        >
+          <CheckCircle className="w-4 h-4" />
+          Approve
+        </button>
+      )}
     </div>
   )
 }

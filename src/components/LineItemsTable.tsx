@@ -21,6 +21,7 @@ interface LineItemsTableProps {
   localItems: LocalItem[]
   categories: Category[]
   locked: boolean
+  allowCategoryEdit?: boolean
   onCategoryChange:  (itemId: number, category: string) => void
   onPriceChange:     (itemId: number, newUnitPrice: number) => void
   onNameChange:      (itemId: number, newName: string) => void
@@ -47,13 +48,14 @@ interface ItemRowProps {
   item: LineItem
   categories: Category[]
   locked: boolean
+  allowCategoryEdit?: boolean
   onCategoryChange: (itemId: number, category: string) => void
   onPriceChange:    (itemId: number, newUnitPrice: number) => void
   onNameChange:     (itemId: number, newName: string) => void
   onDeleteItem:     (itemId: number) => void
 }
 
-function ItemRow({ item, categories, locked, onCategoryChange, onPriceChange, onNameChange, onDeleteItem }: ItemRowProps) {
+function ItemRow({ item, categories, locked, allowCategoryEdit, onCategoryChange, onPriceChange, onNameChange, onDeleteItem }: ItemRowProps) {
   const { touchHandlers, rowStyle, isPastThreshold, offset } = useSwipeToDelete({
     onDelete: () => onDeleteItem(item.id),
     disabled: locked,
@@ -65,6 +67,15 @@ function ItemRow({ item, categories, locked, onCategoryChange, onPriceChange, on
   const lineTotal = item.price * item.quantity
   const discount  = isDiscount(item)
 
+  const swiping = offset < -5
+  const rowBg = discount ? 'bg-emerald-50' : 'bg-white'
+  const swipeBg = isPastThreshold ? 'bg-red-500' : 'bg-red-400'
+
+  // When swiping, cells get red background; content divs get opaque bg so the
+  // red is only revealed in the gap created by the translateX slide.
+  const cellSwipeClass = swiping ? swipeBg : ''
+  const contentBgClass = swiping ? rowBg : ''
+
   return (
     <tr
       className={[
@@ -74,8 +85,8 @@ function ItemRow({ item, categories, locked, onCategoryChange, onPriceChange, on
       {...touchHandlers}
     >
       {/* Item name */}
-      <td className="px-2 py-2.5 align-middle">
-        <div style={rowStyle}>
+      <td className={['px-0 py-0 align-middle', cellSwipeClass].join(' ')}>
+        <div className={['px-2 py-2.5', contentBgClass].join(' ')} style={rowStyle}>
           {locked ? (
             <p className={['font-medium leading-tight', discount ? 'text-emerald-700' : 'text-gray-900'].join(' ')}>
               {item.clean_name || item.raw_name}
@@ -118,20 +129,20 @@ function ItemRow({ item, categories, locked, onCategoryChange, onPriceChange, on
       </td>
 
       {/* Category */}
-      <td className="px-2 py-2.5 align-middle w-36">
-        <div style={rowStyle}>
+      <td className={['px-0 py-0 align-middle w-36', cellSwipeClass].join(' ')}>
+        <div className={['px-2 py-2.5', contentBgClass].join(' ')} style={rowStyle}>
           <CategorySelect
             value={item.category}
             categories={categories}
             onChange={cat => onCategoryChange(item.id, cat)}
-            disabled={locked}
+            disabled={locked && !allowCategoryEdit}
           />
         </div>
       </td>
 
-      {/* Price + swipe delete indicator */}
-      <td className="px-2 py-2.5 align-middle text-right relative overflow-visible">
-        <div style={rowStyle}>
+      {/* Price — last visible cell gets the trash icon overlay */}
+      <td className={['px-0 py-0 align-middle text-right relative', cellSwipeClass].join(' ')}>
+        <div className={['px-2 py-2.5', contentBgClass].join(' ')} style={rowStyle}>
           <PriceInput
             lineTotal={lineTotal}
             locked={locked}
@@ -139,15 +150,9 @@ function ItemRow({ item, categories, locked, onCategoryChange, onPriceChange, on
             onChange={newLineTotal => onPriceChange(item.id, newLineTotal / item.quantity)}
           />
         </div>
-        {/* Red delete zone — revealed as row slides left */}
-        {offset < -5 && (
-          <div
-            className={[
-              'absolute top-0 bottom-0 flex items-center justify-center transition-colors',
-              isPastThreshold ? 'bg-red-500' : 'bg-red-400',
-            ].join(' ')}
-            style={{ left: '100%', width: `${Math.abs(offset)}px` }}
-          >
+        {/* Trash icon pinned to right side of the red zone */}
+        {swiping && (
+          <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none">
             <Trash2 className={[
               'w-5 h-5 text-white transition-transform',
               isPastThreshold ? 'scale-125' : '',
@@ -156,9 +161,9 @@ function ItemRow({ item, categories, locked, onCategoryChange, onPriceChange, on
         )}
       </td>
 
-      {/* Desktop-only delete button */}
+      {/* Desktop-only delete button (hidden during swipe and on mobile) */}
       {!locked && (
-        <td className="px-1 py-2.5 align-middle hidden sm:table-cell">
+        <td className={['px-1 py-2.5 align-middle hidden sm:table-cell', swiping ? 'invisible' : ''].join(' ')}>
           <button
             onClick={() => onDeleteItem(item.id)}
             title="Remove item"
@@ -188,6 +193,11 @@ function LocalItemRow({ loc, categories, onLocalItemChange, onDeleteLocal }: Loc
   })
 
   const negLocal = loc.price < 0
+  const swiping = offset < -5
+  const rowBg = negLocal ? 'bg-emerald-50' : 'bg-blue-50'
+  const swipeBg = isPastThreshold ? 'bg-red-500' : 'bg-red-400'
+  const cellSwipeClass = swiping ? swipeBg : ''
+  const contentBgClass = swiping ? rowBg : ''
 
   return (
     <tr
@@ -197,8 +207,8 @@ function LocalItemRow({ loc, categories, onLocalItemChange, onDeleteLocal }: Loc
       ].join(' ')}
       {...touchHandlers}
     >
-      <td className="px-2 py-2.5 align-middle">
-        <div style={rowStyle}>
+      <td className={['px-0 py-0 align-middle', cellSwipeClass].join(' ')}>
+        <div className={['px-2 py-2.5', contentBgClass].join(' ')} style={rowStyle}>
           <input
             type="text"
             value={loc.name}
@@ -212,8 +222,8 @@ function LocalItemRow({ loc, categories, onLocalItemChange, onDeleteLocal }: Loc
           <span className="text-[10px] text-blue-400 font-medium">new</span>
         </div>
       </td>
-      <td className="px-2 py-2.5 align-middle w-36">
-        <div style={rowStyle}>
+      <td className={['px-0 py-0 align-middle w-36', cellSwipeClass].join(' ')}>
+        <div className={['px-2 py-2.5', contentBgClass].join(' ')} style={rowStyle}>
           <CategorySelect
             value={loc.category}
             categories={categories}
@@ -221,8 +231,8 @@ function LocalItemRow({ loc, categories, onLocalItemChange, onDeleteLocal }: Loc
           />
         </div>
       </td>
-      <td className="px-2 py-2.5 align-middle text-right relative overflow-visible">
-        <div style={rowStyle}>
+      <td className={['px-0 py-0 align-middle text-right relative', cellSwipeClass].join(' ')}>
+        <div className={['px-2 py-2.5', contentBgClass].join(' ')} style={rowStyle}>
           <PriceInput
             lineTotal={loc.price}
             locked={false}
@@ -230,14 +240,8 @@ function LocalItemRow({ loc, categories, onLocalItemChange, onDeleteLocal }: Loc
             onChange={v => onLocalItemChange(loc._tempId, { price: v })}
           />
         </div>
-        {offset < -5 && (
-          <div
-            className={[
-              'absolute top-0 bottom-0 flex items-center justify-center transition-colors',
-              isPastThreshold ? 'bg-red-500' : 'bg-red-400',
-            ].join(' ')}
-            style={{ left: '100%', width: `${Math.abs(offset)}px` }}
-          >
+        {swiping && (
+          <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none">
             <Trash2 className={[
               'w-5 h-5 text-white transition-transform',
               isPastThreshold ? 'scale-125' : '',
@@ -246,8 +250,8 @@ function LocalItemRow({ loc, categories, onLocalItemChange, onDeleteLocal }: Loc
         )}
       </td>
 
-      {/* Desktop-only delete button */}
-      <td className="px-1 py-2.5 align-middle hidden sm:table-cell">
+      {/* Desktop-only delete button (hidden during swipe) */}
+      <td className={['px-1 py-2.5 align-middle hidden sm:table-cell', swiping ? 'invisible' : ''].join(' ')}>
         <button
           onClick={() => onDeleteLocal(loc._tempId)}
           title="Remove item"
@@ -268,6 +272,7 @@ export function LineItemsTable({
   localItems,
   categories,
   locked,
+  allowCategoryEdit,
   onCategoryChange,
   onPriceChange,
   onNameChange,
@@ -335,6 +340,7 @@ export function LineItemsTable({
               item={item}
               categories={categories}
               locked={locked}
+              allowCategoryEdit={allowCategoryEdit}
               onCategoryChange={onCategoryChange}
               onPriceChange={onPriceChange}
               onNameChange={onNameChange}

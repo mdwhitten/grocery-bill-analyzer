@@ -4,6 +4,7 @@ import { CategoryBarChart } from '../components/charts/CategoryBarChart'
 import { ReceiptRow } from '../components/ReceiptRow'
 import { useReceiptList } from '../hooks/useReceipts'
 import { useMonthlyTrends, useDashboardSummary } from '../hooks/useTrends'
+import { useCategoryList } from '../hooks/useCategories'
 import { fmt } from '../lib/utils'
 import type { Page } from '../types'
 
@@ -13,9 +14,10 @@ interface DashboardProps {
 }
 
 export function Dashboard({ onNavigate, onOpenReceipt }: DashboardProps) {
-  const receiptsQ = useReceiptList()
-  const trendsQ   = useMonthlyTrends(6)
-  const summaryQ  = useDashboardSummary()
+  const receiptsQ   = useReceiptList()
+  const trendsQ     = useMonthlyTrends(6)
+  const summaryQ    = useDashboardSummary()
+  const categoriesQ = useCategoryList()
 
   const isLoading = receiptsQ.isLoading || trendsQ.isLoading || summaryQ.isLoading
 
@@ -73,6 +75,8 @@ export function Dashboard({ onNavigate, onOpenReceipt }: DashboardProps) {
           value={String(summary?.receipt_count ?? receipts.length)}
           sub={`${pendingCount} pending approval`}
           icon="🧾"
+          onClick={() => onNavigate('receipts')}
+          linkLabel="View all"
         />
         <StatCard
           eyebrow="Top Category"
@@ -110,7 +114,7 @@ export function Dashboard({ onNavigate, onOpenReceipt }: DashboardProps) {
             </button>
           </div>
           {chartData.length > 0 ? (
-            <CategoryBarChart data={chartData} />
+            <CategoryBarChart data={chartData} categories={categoriesQ.data} />
           ) : (
             <p className="text-sm text-gray-400 text-center py-8">No spending data yet.</p>
           )}

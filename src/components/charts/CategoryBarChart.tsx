@@ -1,10 +1,12 @@
 import { catColor, catIcon, fmtShort } from '../../lib/utils'
+import type { Category } from '../../types'
 
 interface CategoryBarChartProps {
   data: { category: string; amount: number }[]
+  categories?: Category[]
 }
 
-export function CategoryBarChart({ data }: CategoryBarChartProps) {
+export function CategoryBarChart({ data, categories }: CategoryBarChartProps) {
   const max = Math.max(...data.map(d => d.amount), 1)
   const total = data.reduce((s, d) => s + d.amount, 0)
 
@@ -13,12 +15,12 @@ export function CategoryBarChart({ data }: CategoryBarChartProps) {
       {data.map((d, i) => {
         const pct = (d.amount / max) * 100
         const share = ((d.amount / total) * 100).toFixed(0)
-        const color = catColor(d.category)
+        const color = catColor(d.category, categories)
         return (
           <div key={d.category} className="group">
             <div className="flex items-center justify-between mb-1.5">
               <span className="flex items-center gap-2 text-sm text-gray-700 font-medium">
-                <span className="text-base">{catIcon(d.category)}</span>
+                <span className="text-base">{catIcon(d.category, categories)}</span>
                 {d.category}
               </span>
               <div className="flex items-center gap-3">

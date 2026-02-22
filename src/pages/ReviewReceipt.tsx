@@ -141,7 +141,8 @@ export function ReviewReceipt({
   // ── Dirty tracking ──────────────────────────────────────────────────────
 
   const isDirty = useMemo(() => {
-    if (isVerified) return false
+    // Verified receipts can still have category corrections
+    if (isVerified) return Object.keys(state.categoryCorrections).length > 0
     return (
       Object.keys(state.categoryCorrections).length > 0 ||
       Object.keys(state.priceCorrections).length > 0 ||
@@ -161,14 +162,17 @@ export function ReviewReceipt({
     return () => window.removeEventListener('beforeunload', handler)
   }, [isDirty])
 
-  // Expose dirty + editable state so App.tsx can guard navigation / show Save
+  // Expose dirty + editable + verified state so App.tsx can guard navigation / show Save
+  // Verified receipts are "editable" when they have pending category changes
   useEffect(() => {
     const w = window as any
     w.__tabulate_isDirty = isDirty
-    w.__tabulate_isEditable = !isVerified
+    w.__tabulate_isEditable = !isVerified || isDirty
+    w.__tabulate_isVerified = isVerified
     return () => {
       w.__tabulate_isDirty = false
       w.__tabulate_isEditable = false
+      w.__tabulate_isVerified = false
     }
   }, [isDirty, isVerified])
 
@@ -378,6 +382,7 @@ export function ReviewReceipt({
               localItems={localItems}
               categories={categories}
               locked={isVerified}
+              allowCategoryEdit={isVerified}
               onCategoryChange={handleCategoryChange}
               onPriceChange={handlePriceChange}
               onNameChange={handleNameChange}
@@ -411,7 +416,7 @@ export function ReviewReceipt({
                 </button>
               )}
             </div>
-            {!isVerified && (
+            {!isVerified ? (
               <div className="flex gap-2">
                 <button onClick={() => handleSave(false)} disabled={!isDirty || saving}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
@@ -424,6 +429,12 @@ export function ReviewReceipt({
                   Approve
                 </button>
               </div>
+            ) : isDirty && (
+              <button onClick={() => handleSave(false)} disabled={saving}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                <Save className="w-3.5 h-3.5" />
+                {saving ? 'Saving…' : 'Save Categories'}
+              </button>
             )}
           </div>
         </div>

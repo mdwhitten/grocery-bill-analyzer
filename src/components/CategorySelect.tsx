@@ -9,7 +9,7 @@ interface CategorySelectProps {
 }
 
 export function CategorySelect({ value, categories, onChange, disabled }: CategorySelectProps) {
-  const color = catColor(value)
+  const color = catColor(value, categories)
   return (
     <div className="relative">
       <select

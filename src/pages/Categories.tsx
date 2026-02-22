@@ -168,12 +168,13 @@ interface EditRowProps {
   saveLabel: string
   saving?: boolean
   initialIconPickerOpen?: boolean
+  nameInputRef?: React.RefObject<HTMLInputElement | null>
   onChange: (d: EditDraft) => void
   onSave: () => void
   onCancel: () => void
 }
 
-function EditRow({ draft, isBuiltin, saveLabel, saving, initialIconPickerOpen, onChange, onSave, onCancel }: EditRowProps) {
+function EditRow({ draft, isBuiltin, saveLabel, saving, initialIconPickerOpen, nameInputRef, onChange, onSave, onCancel }: EditRowProps) {
   return (
     <div className="px-5 py-3.5 flex flex-col gap-3">
       <div className="flex items-center gap-3">
@@ -186,6 +187,7 @@ function EditRow({ draft, isBuiltin, saveLabel, saving, initialIconPickerOpen, o
         )}
 
         <input type="text" value={draft.name}
+          ref={nameInputRef}
           onChange={e => onChange({ ...draft, name: e.target.value })}
           disabled={isBuiltin}
           placeholder="Category name"
@@ -328,6 +330,19 @@ export function Categories() {
   const [newDraft, setNewDraft]   = useState<EditDraft>({
     name: '', icon: '📦', color: PRESET_COLORS[0],
   })
+  const newRowRef  = useRef<HTMLDivElement>(null)
+  const newNameRef = useRef<HTMLInputElement>(null)
+
+  // Scroll to and focus the new category name input when shown
+  useEffect(() => {
+    if (showNew) {
+      // Use requestAnimationFrame to wait for the DOM to render
+      requestAnimationFrame(() => {
+        newRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        newNameRef.current?.focus()
+      })
+    }
+  }, [showNew])
 
   const activeCats   = categories.filter(c => !c.is_disabled)
   const disabledCats = categories.filter(c => c.is_disabled)
@@ -415,9 +430,10 @@ export function Categories() {
           ))}
 
           {showNew && (
-            <div className="border-b border-gray-50 bg-blue-50/30">
+            <div ref={newRowRef} className="border-b border-gray-50 bg-blue-50/30">
               <EditRow draft={newDraft} isBuiltin={false} saveLabel="Create"
                 saving={createMut.isPending}
+                nameInputRef={newNameRef}
                 onChange={setNewDraft} onSave={createCategory} onCancel={() => setShowNew(false)} />
             </div>
           )}

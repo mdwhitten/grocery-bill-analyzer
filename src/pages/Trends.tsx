@@ -1,8 +1,9 @@
 import { useState, useMemo, useRef } from 'react'
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { useMonthlyTrends } from '../hooks/useTrends'
+import { useCategoryList } from '../hooks/useCategories'
 import { catColor, catIcon, fmt, fmtShort } from '../lib/utils'
-import type { TrendsResponse, MonthSummary } from '../types'
+import type { Category, TrendsResponse, MonthSummary } from '../types'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -50,9 +51,10 @@ interface BarChartProps {
   data:        TrendsResponse
   selectedIdx: number
   onSelect:    (idx: number) => void
+  cats?:       Category[]
 }
 
-function StackedBarChart({ data, selectedIdx, onSelect }: BarChartProps) {
+function StackedBarChart({ data, selectedIdx, onSelect, cats }: BarChartProps) {
   const { months, categories } = data
   const n = months.length
 
@@ -159,7 +161,7 @@ function StackedBarChart({ data, selectedIdx, onSelect }: BarChartProps) {
                   <rect
                     key={cat}
                     x={x} y={y} width={BAR_WIDTH} height={Math.max(h, 1)}
-                    fill={catColor(cat)} rx={isTop ? 4 : 0}
+                    fill={catColor(cat, cats)} rx={isTop ? 4 : 0}
                     onMouseEnter={e => handleSegmentEnter(e, cat, month.by_category[cat] ?? 0, month.month_label)}
                     onTouchStart={e => { e.stopPropagation(); handleSegmentEnter(e, cat, month.by_category[cat] ?? 0, month.month_label) }}
                     style={{ cursor: 'pointer' }}
@@ -171,7 +173,7 @@ function StackedBarChart({ data, selectedIdx, onSelect }: BarChartProps) {
                 const bottom = segments[0]
                 return (
                   <rect key="bottom-round" x={x} y={bottom.y + bottom.h - 4}
-                    width={BAR_WIDTH} height={4} fill={catColor(segments[0].cat)} rx={0} />
+                    width={BAR_WIDTH} height={4} fill={catColor(segments[0].cat, cats)} rx={0} />
                 )
               })()}
 
@@ -202,8 +204,8 @@ function StackedBarChart({ data, selectedIdx, onSelect }: BarChartProps) {
             transform: 'translate(-50%, -100%)',
           }}
         >
-          <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: catColor(tooltip.cat) }} />
-          <span>{catIcon(tooltip.cat)} {tooltip.cat}</span>
+          <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: catColor(tooltip.cat, cats) }} />
+          <span>{catIcon(tooltip.cat, cats)} {tooltip.cat}</span>
           <span className="font-mono font-semibold">{fmt(tooltip.amount)}</span>
         </div>
       )}
@@ -224,9 +226,10 @@ interface BreakdownProps {
   month:     MonthSummary
   prevMonth: MonthSummary | null
   selIdx:    number
+  cats?:     Category[]
 }
 
-function MonthBreakdown({ month, prevMonth, selIdx }: BreakdownProps) {
+function MonthBreakdown({ month, prevMonth, selIdx, cats }: BreakdownProps) {
   const entries = useMemo<BreakdownEntry[]>(() => {
     const allCats = new Set([
       ...Object.keys(month.by_category),
@@ -267,7 +270,7 @@ function MonthBreakdown({ month, prevMonth, selIdx }: BreakdownProps) {
             style={{ opacity: 0, animation: `fadeUp 180ms ease-out ${i * 35}ms forwards` }}>
 
             <div className="flex items-center gap-2 w-36 shrink-0">
-              <span className="text-base leading-none">{catIcon(entry.category)}</span>
+              <span className="text-base leading-none">{catIcon(entry.category, cats)}</span>
               <span className="text-sm text-gray-700 truncate">{entry.category}</span>
             </div>
 
@@ -275,7 +278,7 @@ function MonthBreakdown({ month, prevMonth, selIdx }: BreakdownProps) {
               <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
                 {!isZero && (
                   <div className="h-full rounded-full transition-[width] duration-500 ease-out"
-                    style={{ width: `${entry.sharePct}%`, background: catColor(entry.category) }} />
+                    style={{ width: `${entry.sharePct}%`, background: catColor(entry.category, cats) }} />
                 )}
               </div>
             </div>
@@ -306,6 +309,7 @@ function MonthBreakdown({ month, prevMonth, selIdx }: BreakdownProps) {
 
 export function Trends() {
   const { data, isLoading, isError } = useMonthlyTrends(6)
+  const { data: cats } = useCategoryList()
 
   const lastIdx = (data?.months.length ?? 1) - 1
   const [selectedIdx, setSelectedIdx] = useState(lastIdx)
@@ -369,6 +373,7 @@ export function Trends() {
               data={{ months, categories }}
               selectedIdx={safeIdx}
               onSelect={setSelectedIdx}
+              cats={cats}
             />
           </div>
 
@@ -416,7 +421,7 @@ export function Trends() {
               </div>
             </div>
 
-            <MonthBreakdown month={selectedMonth} prevMonth={prevMonth} selIdx={safeIdx} />
+            <MonthBreakdown month={selectedMonth} prevMonth={prevMonth} selIdx={safeIdx} cats={cats} />
 
             {prevMonth == null && (
               <p className="mt-3 text-[11px] text-gray-400 text-center">
